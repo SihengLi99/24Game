@@ -62,11 +62,16 @@ class GRPOConfig(trl.GRPOConfig):
               
     dataset_num_proc: int = field(default=8, metadata={"help": "The number of processes to use when loading the dataset."})
 
+    num_examples: int = field(
+        default=None,
+        metadata={"help": "The number of examples to use for training. If None, use all examples."}
+    )
+
     @property
     def reward_funcs_list(self):
         return [s.strip() for s in self.reward_funcs.split("_") if s.strip()]
 
-def load_grpo_dataset(dataset_name, dataset_config, tokenizer, num_proc, prompt_template):
+def load_grpo_dataset(dataset_name, dataset_config, num_examples, prompt_template, tokenizer, num_proc):
 
     try:
         dataset = load_dataset(dataset_name, name=dataset_config)
@@ -78,6 +83,9 @@ def load_grpo_dataset(dataset_name, dataset_config, tokenizer, num_proc, prompt_
             item["prompt"] = [{"role": "user", "content": prompt_template.format(prompt=item["prompt"][0]["content"])}]
             return item
         dataset = dataset.map(process, num_proc=num_proc)
+        
+    if num_examples is not None:
+        dataset["train"] = dataset["train"].shuffle(seed=42).select(range(num_examples))
     
     return dataset
 
@@ -127,9 +135,10 @@ def main(script_args, training_args, model_args):
     dataset = load_grpo_dataset(
         dataset_name=script_args.dataset_name,
         dataset_config=script_args.dataset_config,
+        num_examples=training_args.num_examples,
+        prompt_template=training_args.prompt_template,
         tokenizer=tokenizer,
         num_proc=training_args.dataset_num_proc,
-        prompt_template=training_args.prompt_template,
     )
 
     # Get reward functions

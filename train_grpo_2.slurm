@@ -43,10 +43,10 @@ export NO_PROXY="$NO_PROXY_LIST"
 PROJECT_HOME=/mnt/petrelfs/lisiheng/24Game
 OUTPUT_HOME=/mnt/lustrenew/mllm_safety-shared/lisiheng
 
-MODEL_DIR=/mnt/lustrenew/mllm_safety-shared/models/huggingface/Qwen
-MODEL_NAME=Qwen2.5-1.5B
-# MODEL_DIR=/mnt/lustrenew/mllm_safety-shared/lisiheng/checkpoints
-# MODEL_NAME=Qwen2.5-1.5B-24_game_100000_direct_sft_0.2_0.2_0.01-32768-5e-5-128
+# MODEL_DIR=/mnt/lustrenew/mllm_safety-shared/models/huggingface/Qwen
+# MODEL_NAME=Qwen2.5-1.5B
+MODEL_DIR=/mnt/lustrenew/mllm_safety-shared/lisiheng/checkpoints
+MODEL_NAME=Qwen2.5-Math-1.5B-24_game_100000_direct_sft_0.2_0.2_0.01-32768-5e-5-128-4096
 
 MODEL_NAME_OR_PATH=$MODEL_DIR/$MODEL_NAME
 

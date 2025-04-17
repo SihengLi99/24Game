@@ -6,7 +6,6 @@ trust_remote_code: true
 
 # GRPO trainer config
 bf16: true
-use_vllm: true
 do_eval: false
 eval_strategy: 'no'
 gradient_accumulation_steps: 1
