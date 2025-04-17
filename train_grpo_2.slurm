@@ -5,7 +5,7 @@
 #SBATCH --partition=mllm_safety
 #SBATCH --job-name=GRPO
 #SBATCH --output=log/job_%j.out
-#SBATCH --exclude=SH-IDCA1404-10-140-54-10,SH-IDCA1404-10-140-54-22,SH-IDCA1404-10-140-54-35,SH-IDCA1404-10-140-54-39
+#SBATCH --exclude=SH-IDCA1404-10-140-54-10,SH-IDCA1404-10-140-54-22,SH-IDCA1404-10-140-54-35,SH-IDCA1404-10-140-54-39,SH-IDCA1404-10-140-54-80,SH-IDCA1404-10-140-54-86
 
 NUM_NODES=$SLURM_NNODES
 GPUS_PER_NODE=8
@@ -46,7 +46,7 @@ OUTPUT_HOME=/mnt/lustrenew/mllm_safety-shared/lisiheng
 # MODEL_DIR=/mnt/lustrenew/mllm_safety-shared/models/huggingface/Qwen
 # MODEL_NAME=Qwen2.5-1.5B
 MODEL_DIR=/mnt/lustrenew/mllm_safety-shared/lisiheng/checkpoints
-MODEL_NAME=Qwen2.5-Math-1.5B-24_game_100000_direct_sft_0.2_0.2_0.01-32768-5e-5-128-4096
+MODEL_NAME=Qwen2.5-Math-1.5B-24_game_100000_direct_sft_0.2_0.2_0.01-32768-5e-5-128
 
 MODEL_NAME_OR_PATH=$MODEL_DIR/$MODEL_NAME
 
