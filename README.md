@@ -2,7 +2,7 @@
 
 > **Author:** Siheng Li  
 > **Date:** 2025‑04‑17  
-> A simple *O(1)* 24‑point solver, trained with **SFT**, **SFT + RL**, and **pure RL**, surpassing **60 %** accuracy.
+> A simple *O(1)* 24‑point solver, trained with **SFT**, **SFT + RL**, and **pure RL**, reaching **60 %** accuracy.
 
 ---
 
@@ -77,6 +77,25 @@ def find_expression_for_24(nums):
                         return r3_expr
     return None
 ```
+
+
+```python
+
+    train_data = []
+    test_data = []
+
+    # Define a candidate set to ensure that there is no overlap between the training and test sets.
+    candidate_set = set()
+
+    train_candidates = parallel_generate_candidates(n_train, value_min, value_max, candidate_set, n_processes, description="train")
+    for nums, expr in train_candidates:
+        train_data.append(nums)
+
+    test_candidates = parallel_generate_candidates(n_test, value_min, value_max, candidate_set, n_processes, description="test")
+    for nums, expr in test_candidates:
+        test_data.append(nums)
+```
+
 
 ### 1.2 Human‑Like Thought Processes 🧠
 
@@ -267,6 +286,7 @@ trainer = SFTTrainer(
 ```
 
 ```bash
+# Supports multi-node, multi-GPU training.
 sbatch train_sft.slurm
 ```
 
@@ -286,7 +306,101 @@ trainer = GRPOTrainer(
 )
 ```
 
+```python
+def format_reward_func(completions, **kwargs):
+    """
+    Checks each completion for:
+      1) A <think>...</think> block.
+      2) An <answer>...</answer> block.
+      3) A non-lazy <think> block (i.e. not simply "..." or empty).
+      
+    Returns a list of float rewards:
+      1.0 if all conditions are met,
+      0.0 if either block is missing or if the <think> block is lazy.
+    """
+    # Removed the requirement for an end tag like <|endoftext|>.
+    pattern = re.compile(r'(?s)^<think>.*?</think>.*?<answer>.*?</answer>\s*$')
+    rewards = []
+    for completion in completions:
+        # Ensure each completion is a list with one dictionary.
+        assert len(completion) == 1, f"Unexpected completion structure: {completion}"
+        output = completion[0]["content"]
+        
+        # First, check if the overall format is correct.
+        if not pattern.match(output):
+            rewards.append(0.0)
+            continue
+        
+        # Extract the content inside the <think> block.
+        think_match = re.search(r'(?s)<think>(.*?)</think>', output)
+        if think_match:
+            think_content = think_match.group(1).strip()
+            # If the think block is exactly "..." or empty, penalize it.
+            if think_content == "..." or think_content == "":
+                rewards.append(0.0)
+            else:
+                rewards.append(1.0)
+        else:
+            rewards.append(0.0)
+    return rewards
+
+def correctness_reward_func(completions, expression=None, **kwargs):
+    """
+    Checks if the model's <answer> expression is correct by:
+      1) ensuring it uses the same digits as the reference expression (from expression[i]),
+      2) and evaluating to 24.
+    
+    Args:
+      completions: A list of completions, where each completion is a list containing one dictionary with a "content" key.
+      expression: A list of reference expressions (strings) that yield 24 and use a specific set of digits.
+                  expression[i] corresponds to completions[i].
+    
+    Returns:
+      A list of float rewards (1.0 if both digit match and evaluation to 24 is successful, otherwise 0.0).
+    """
+    if expression is None:
+        return [0.0] * len(completions)
+
+    answer_pattern = re.compile(r'(?s)<answer>(.*?)</answer>')
+    epsilon = 1e-6
+
+    rewards = []
+    for i, completion in enumerate(completions):
+        assert len(completion) == 1, f"Unexpected completion structure: {completion}"
+        output = completion[0]["content"]
+        
+        match = answer_pattern.search(output)
+        if not match:
+            rewards.append(0.0)
+            continue
+        
+        model_expr = match.group(1).strip()
+        # Compare digits from both the model's expression and the reference expression.
+        ref_expr = expression[i]
+        ref_digits_str = re.findall(r"\d+", ref_expr)
+        model_digits_str = re.findall(r"\d+", model_expr)
+
+        ref_digits = sorted(int(x) for x in ref_digits_str)
+        model_digits = sorted(int(x) for x in model_digits_str)
+
+        if ref_digits != model_digits:
+            rewards.append(0.0)
+            continue
+
+        try:
+            val = eval(model_expr)
+            if abs(val - 24) < epsilon:
+                rewards.append(1.0)
+            else:
+                rewards.append(0.0)
+        except Exception:
+            rewards.append(0.0)
+
+    return rewards
+```
+
 ```bash
+# Supports multi-node, multi-GPU training and enables inference using VLLM.
 sbatch train_grpo.slurm
 ```
 
@@ -360,14 +474,17 @@ bash evaluate.sh
 | DeepSeek‑R1‑Distill‑Qwen‑1.5B | 0.04 | 0.08 | 0.12 | 0.21 | 0.33 |
 | Qwen2.5‑1.5B + SFT  | 0.40 | 0.66 | 0.80 | 0.88 | 0.91 |
 | Qwen2.5‑1.5B + SFT + RL  | **0.60** | **0.84** | **0.91** | **0.92** | **0.94** |
-| Qwen2.5‑1.5B + RL only | | | | | |
+| Qwen2.5‑1.5B + RL only | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
 
 *All inference results are available for local inspection.*
+*For Qwen2.5‑1.5B with SFT and RL, we observed a clear upward trend in the reward curve during RL training. However, due to limited computational resources, we leave a more comprehensive exploration of this direction to future work.*
 *For the RL-only approach, I experimented with models up to Qwen2.5-14B; however, it still failed to discover effective strategies, as the reward exhibited no significant improvement over an extended period.*
 
 ### 4.2 Impact of Test‑Time Compute ⏱️
 
-Discuss how increasing *K* improves accuracy at the cost of latency and compute. Include any Pareto observations or scaling laws you observed.
+The following figure illustrates how increasing `max_think_tokens` (i.e., test-time compute) improves the model’s reasoning accuracy across various Pass@k metrics:
+
+![Test-time Compute vs Accuracy](assets/test_time_compute_vs_accuracy.png)
 
 ---
 
