@@ -30,11 +30,11 @@ def parse_args():
 
 def load_data(path):
     dataset = datasets.load_from_disk(path)["test"]
-    print(dataset)
     def process(item):
         item["prompt"] = item["prompt"][0]["content"]
         return item
     dataset = dataset.map(process, num_proc=8)
+    print(dataset)
     return dataset.to_list()
 
 

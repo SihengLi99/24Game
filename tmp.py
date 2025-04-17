@@ -152,7 +152,7 @@ def solve_24_response(numbers,
                                 '+': final_val_l + final_val_r,
                                 '-': final_val_l - final_val_r,
                                 '*': final_val_l * final_val_r,
-                                '/': final_val_l / final_val_r if final_val_r != 0 else None
+                                '/': final_val_l / final_val_r
                             }[final_op]
                             thought.append(
                                 f"Compute {final_expr_l}{final_op}{final_expr_r} = "
@@ -175,6 +175,6 @@ if __name__ == '__main__':
     thought = solve_24_response([35, 12, 53, 16],
                 exploration_three_prob=0.3,
                 exploration_two_prob=0.3,
-                error_prob=0.1)
+                error_prob=0.01)
     
     print(thought)
