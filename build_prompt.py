@@ -228,13 +228,15 @@ def build_hf_dataset(n_train, n_test, prompt_type='direct', dataset_name='24_poi
 
 if __name__ == "__main__":
     # Specify the desired number of processes, for example, 8
-    desired_processes = 32
+    desired_processes = 64
 
+    n_train = 1000000
+    prompt_type = "direct"
     ds = build_hf_dataset(
-        n_train=100000,  
+        n_train=n_train,  
         n_test=1000,     
-        prompt_type='direct',
-        dataset_name='24_game_direct',
+        prompt_type=prompt_type,
+        dataset_name=f"24_game_{n_train}_{prompt_type}",
         n_processes=desired_processes
     )
 

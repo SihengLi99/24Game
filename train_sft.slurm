@@ -1,10 +1,11 @@
 #!/bin/bash
-#SBATCH --nodes=1
+#SBATCH --nodes=4
 #SBATCH --gres=gpu:8
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=mllm_safety
 #SBATCH --job-name=SFT
 #SBATCH --output=log/job_%j.out
+#SBATCH --exclude=SH-IDCA1404-10-140-54-21,SH-IDCA1404-10-140-54-35,SH-IDCA1404-10-140-54-49,SH-IDCA1404-10-140-54-59,SH-IDCA1404-10-140-54-46,SH-IDCA1404-10-140-54-60,SH-IDCA1404-10-140-54-62,SH-IDCA1404-10-140-54-71,SH-IDCA1404-10-140-54-73,SH-IDCA1404-10-140-54-74,SH-IDCA1404-10-140-54-76,SH-IDCA1404-10-140-54-78
 
 NUM_NODES=$SLURM_NNODES
 GPUS_PER_NODE=8
@@ -25,23 +26,23 @@ export HF_ENDPOINT=https://hf-mirror.com
 export HF_HUB_ENABLE_HF_TRANSFER=0
 export ACCELERATE_LOG_LEVEL=info
 export WANDB_API_KEY=85a3c5af1814c40a13d5d9e64783857cf260b506
-export WANDB_PROJECT=SFT_24Game
+export WANDB_PROJECT=24Game_SFT
 
 PROJECT_HOME=/mnt/petrelfs/lisiheng/24Game
 OUTPUT_HOME=/mnt/lustrenew/mllm_safety-shared/lisiheng
 
 MODEL_DIR=/mnt/lustrenew/mllm_safety-shared/models/huggingface/Qwen
-MODEL_NAME=Qwen2.5-3B
+MODEL_NAME=Qwen2.5-0.5B
 
 MODEL_NAME_OR_PATH=$MODEL_DIR/$MODEL_NAME
 
 DATASET_DIR=./data
-DATASET_NAME=24_game_sft_0.01
+DATASET_NAME=24_game_200000_direct_sft_0.01
 DATASET_CONFIG=none
 DATASET_NAME_OR_PATH=$DATASET_DIR/$DATASET_NAME
 PROCESS_REASONING_CONVERSATION=false
 
-PER_DEVICE_TRAIN_BATCH_SIZE=16
+PER_DEVICE_TRAIN_BATCH_SIZE=8
 MAX_SEQ_LENGTH=32768
 LEARNING_RATE=5e-5
 TOTAL_BATCH_SIZE=$(expr $PER_DEVICE_TRAIN_BATCH_SIZE \* $WORLD_SIZE)
@@ -49,7 +50,7 @@ TOTAL_BATCH_SIZE=$(expr $PER_DEVICE_TRAIN_BATCH_SIZE \* $WORLD_SIZE)
 OUTPUT_DIR=$OUTPUT_HOME/checkpoints/$MODEL_NAME-$DATASET_NAME-$MAX_SEQ_LENGTH-$LEARNING_RATE-$TOTAL_BATCH_SIZE
 
 srun --nodes=$NUM_NODES --ntasks=$NUM_NODES --nodelist=$TRAIN_NODES accelerate launch \
-    --config_file configs/accelerate_fsdp.yaml \
+    --config_file configs/accelerate_ds.yaml \
     --num_machines $NUM_NODES \
     --num_processes $WORLD_SIZE \
     --main_process_ip $MASTER_ADDR \

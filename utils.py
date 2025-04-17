@@ -7,6 +7,8 @@ DEFAULT_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] ==
 PAD_TOKEN_MAP = {
     "DeepSeek-R1-Distill-Llama-8B": "<|finetune_right_pad_id|>",
     "DeepSeek-R1-Distill-Qwen-1.5B": "<|video_pad|>",
+    "Qwen2.5-0.5B": "<|video_pad|>",
+    "Qwen2.5-1.5B": "<|video_pad|>",
     "Qwen2.5-3B": "<|video_pad|>",
     "Qwen2.5-7B": "<|video_pad|>",
     "Qwen2.5-14B": "<|video_pad|>",

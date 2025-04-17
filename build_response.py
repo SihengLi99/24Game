@@ -105,13 +105,14 @@ def dfs_24_items(items, logs, used_error=False, error_prob=0.25, memo=None):
                 # For the last two items, check whether any candidate equals 24.
                 for result, expr, op, val1, val2 in candidates:
                     if result == Fraction(24, 1):
-                        logs.append(f"{format_num(val1)} {op} {format_num(val2)} = {format_num(result)}")
+                        logs.append(f"Find: {format_num(val1)} {op} {format_num(val2)} = {format_num(result)}")
                         logs.append(f"Final: {expr}={format_num(result)}")
                         return True, expr
                 memo[key] = False
                 return False, None
             if len(items) == 3:
-                logs.append(f"Trying {a},{b}")
+                c, expr_c = [items[k] for k in range(len(items)) if k not in (i, j)][0]
+                logs.append(f"Trying {a},{b}, keeping {c}")
                 
             for correct_val, op_str, op_symbol, val1, val2 in candidates:
                 made_error = False
@@ -145,10 +146,7 @@ def dfs_24_items(items, logs, used_error=False, error_prob=0.25, memo=None):
                     else:
                         continue
                 else:
-                    if len(new_items) == 2:
-                        value_str = format_value(new_items)
-                        logs.append(f"{value_str}")
-                    else:
+                    if len(new_items) > 2:
                         state_str = format_state(new_items)
                         logs.append(f"State: {state_str}")
                     found, final_expr = dfs_24_items(new_items, logs,
@@ -289,16 +287,15 @@ def analyze_statistics(dataset_path, model_name):
     print(f"Token Statistics: Average tokens: {avg:.2f}, Max tokens: {max_tokens}, Median tokens: {median:.2f}")
     return stats
 
-def main():
+def main(dataset_name, error_prob):
     # Set the directory for the HuggingFace dataset (saved using datasets.save_to_disk).
-    input_dataset_path = "./data/24_game_direct"  # Adjust this directory as needed.
+    input_dataset_path = f"./data/{dataset_name}"  # Adjust this directory as needed.
     assert os.path.exists(input_dataset_path), f"Input dataset directory '{input_dataset_path}' does not exist."
     
     # Load the HuggingFace dataset.
     hf_dataset = load_from_disk(input_dataset_path)["train"]
     
     # Create SFT examples from the loaded dataset.
-    error_prob = 0.01  # Adjust error probability if needed.
     sft_examples = create_sft_examples(hf_dataset, error_prob=error_prob)
     print(f"Generated {len(sft_examples)} SFT examples.")
     
@@ -306,18 +303,18 @@ def main():
     sft_dataset = DatasetDict({"train": Dataset.from_list(sft_examples)})
     
     # Save the SFT dataset in HuggingFace format.
-    output_dir = f"./data/24_game_sft_{error_prob}"
+    output_dir = f"./data/{dataset_name}_sft_{error_prob}"
     sft_dataset.save_to_disk(output_dir)
     print(f"SFT dataset saved in HuggingFace format to '{output_dir}'")
 
 if __name__ == "__main__":
     # Example input: four numbers between 0 and 99.
-    # example_numbers = [35, 12, 53, 16]
-    # response_text = solve_24_response(example_numbers, error_prob=0.01)
-    # print(response_text)
+    example_numbers = [35, 12, 53, 16]
+    response_text = solve_24_response(example_numbers, error_prob=0.01)
+    print(response_text)
     
     # Uncomment the following line to run the main function.
-    # main()
+    # main(dataset_name="24_game_200000_direct", error_prob=0.01)
     
     # Uncomment and adjust the following line to analyze token statistics.
-    analyze_statistics("./data/24_game_sft_0.01", "/mnt/lustrenew/mllm_safety-shared/models/huggingface/Qwen/Qwen2.5-3B")
+    # analyze_statistics("./data/24_game_100000_direct_sft_0.01", "/mnt/lustrenew/mllm_safety-shared/models/huggingface/Qwen/Qwen2.5-3B")

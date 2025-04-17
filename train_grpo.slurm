@@ -26,7 +26,7 @@ export HF_ENDPOINT=https://hf-mirror.com
 export HF_HUB_ENABLE_HF_TRANSFER=0
 export ACCELERATE_LOG_LEVEL=info
 export WANDB_API_KEY=85a3c5af1814c40a13d5d9e64783857cf260b506
-export WANDB_PROJECT=GRPO_24Game
+export WANDB_PROJECT=24Game_GRPO
 
 NO_PROXY_LIST=""
 for node in "${TRAIN_NODES[@]}"; do
