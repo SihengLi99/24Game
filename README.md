@@ -482,6 +482,72 @@ bash evaluate.sh
 
 ### 4.2 Impact of Test‑Time Compute ⏱️
 
+```python
+# --------------------------------------------------------------------------- #
+# Two‑stage generator
+# --------------------------------------------------------------------------- #
+def generate_two_pass(model,
+                      tokenizer,
+                      prompt_txt: str,
+                      args,
+                      device):
+    """
+    Produce `args.num_samples` completions for one prompt using two passes.
+    """
+    # ---- Stage‑1 : batch generation for <think> ----
+    prompt_ids = tokenizer(prompt_txt,
+                           return_tensors="pt").to(device).input_ids
+    stage1 = model.generate(
+        prompt_ids,
+        num_return_sequences=args.num_samples,
+        do_sample=True,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        max_new_tokens=args.max_think_tokens,
+        pad_token_id=tokenizer.eos_token_id
+    )
+
+    outputs = [""] * args.num_samples
+    cont_prompts, cont_indices = [], []
+
+    for i, seq in enumerate(stage1):
+        gen_part = tokenizer.decode(seq[prompt_ids.shape[1]:],
+                                    skip_special_tokens=True)
+        if "</think>" in gen_part:
+            outputs[i] = gen_part                      # finished in Stage‑1
+        else:
+            forced_tail = "</think>\n<answer>"
+            cont_prompts.append(prompt_txt + gen_part + forced_tail)
+            cont_indices.append(i)
+            outputs[i] = gen_part + forced_tail        # placeholder
+
+    # ---- Stage‑2 : continue only where needed ----
+    if cont_prompts:
+        cont_inputs = tokenizer(cont_prompts,
+                                return_tensors="pt",
+                                padding=True).to(device)
+        cont_batch = model.generate(
+            **cont_inputs,
+            do_sample=True,
+            temperature=args.temperature,
+            top_k=args.top_k,
+            max_new_tokens=ANSWER_MAX_TOKENS,
+            pad_token_id=tokenizer.eos_token_id
+        )
+        base_len = cont_inputs["input_ids"].shape[1]
+        for j, seq in enumerate(cont_batch):
+            gen_rest = tokenizer.decode(seq[base_len:],
+                                        skip_special_tokens=True)
+            outputs[cont_indices[j]] += gen_rest
+
+    return outputs
+```
+
+```bash
+bash analyze.sh
+```
+
+
 The following figure illustrates how increasing `max_think_tokens` (i.e., test-time compute) improves the model’s reasoning accuracy across various Pass@k metrics:
 
 ![Test-time Compute vs Accuracy](assets/test_time_compute_vs_accuracy.png)
