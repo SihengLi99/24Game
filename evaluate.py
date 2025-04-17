@@ -1,15 +1,17 @@
 import os
+import re
 import json
 import argparse
-import numpy as np
 
-import datasets
-import transformers
-from vllm import LLM, SamplingParams
+import torch
+from accelerate import Accelerator
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from tqdm.auto import tqdm
 
-from build_sft_dataset import evaluate_final_answer
+from datasets import load_from_disk
+from build_prompt import is_expr_equal_to_24
 
-# Compute pass@k for multiple k values in one run (e.g., 1,2,4,8,16)
+# Compute pass@k for multiple k values in one run
 PASS_K_VALUES = [1, 2, 4, 8, 16]
 
 def parse_args():
@@ -18,7 +20,6 @@ def parse_args():
     parser.add_argument("--temperature", type=float, required=True)
     parser.add_argument("--top_k", type=int, default=1)
     parser.add_argument("--max_tokens", type=int, required=True)
-    parser.add_argument("--tensor_parallel_size", type=int, default=1)
     parser.add_argument("--input_path", type=str, required=True)
     parser.add_argument("--output_path", type=str, required=True)
     parser.add_argument(
@@ -29,78 +30,127 @@ def parse_args():
 
 
 def load_data(path):
-    dataset = datasets.load_from_disk(path)["test"]
-    def process(item):
-        item["prompt"] = item["prompt"][0]["content"]
-        return item
-    dataset = dataset.map(process, num_proc=8)
+    dataset = load_from_disk(path)["test"]
+    
+    dataset = dataset.select(range(100))
+    
     print(dataset)
     return dataset.to_list()
 
-
-def inference_vllm(
+def inference_transformers(
     dataset,
     model_name_or_path,
     temperature,
     top_k,
     max_tokens,
-    tensor_parallel_size,
-    num_samples=1
+    num_samples,
+    accelerator
 ):
-    # Request num_samples completions per prompt for Pass@k
-    sampling_params = SamplingParams(
-        temperature=temperature,
-        top_k=top_k,
-        max_tokens=max_tokens,
-        n=num_samples
-    )
-    model = LLM(
-        model_name_or_path,
-        tensor_parallel_size=tensor_parallel_size,
-        trust_remote_code=True
-    )
-    tokenizer = transformers.AutoTokenizer.from_pretrained(model_name_or_path)
+    device = accelerator.device
+    world_size = accelerator.num_processes
+    process_index = accelerator.process_index
 
-    for item in dataset:
-        messages = [{"role": "user", "content": item["prompt"]}]
+    # Shard dataset across GPUs/processes
+    dataset_shard = dataset[process_index::world_size]
+
+    # Load tokenizer and model
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name_or_path,
+        attn_implementation='flash_attention_2',
+        torch_dtype=torch.float16 if accelerator.mixed_precision == 'fp16' else torch.bfloat16
+    )
+    model.to(device)
+
+    model, tokenizer = accelerator.prepare(model, tokenizer)
+    # unwrap DDP wrapper for generation
+    gen_model = model.module if hasattr(model, "module") else model
+
+    results_shard = []
+    for item in tqdm(dataset_shard, desc="Inference", unit="item"):
         item["prompt_processed"] = tokenizer.apply_chat_template(
-            messages,
+            item["prompt"],
             add_generation_prompt=True,
             tokenize=False
         )
+        
+        inputs = tokenizer(
+            item["prompt_processed"], return_tensors="pt", padding=True
+        ).to(device)
 
-    outputs = model.generate(
-        [item["prompt_processed"] for item in dataset],
-        sampling_params
-    )
+        generate_kwargs = {
+            "do_sample": True,
+            "temperature": temperature,
+            "top_k": top_k,
+            "max_new_tokens": max_tokens,
+            "num_return_sequences": num_samples,
+            "pad_token_id": tokenizer.eos_token_id
+        }
+        outputs = gen_model.generate(**inputs, **generate_kwargs)
+        input_ids = inputs["input_ids"]
+        input_len = input_ids.shape[1]
+        gen_tokens = outputs[:, input_len:]
+        texts = tokenizer.batch_decode(gen_tokens, skip_special_tokens=True)
 
-    results = []
-    for item, output in zip(dataset, outputs):
-        assert item["prompt_processed"] == output.prompt
-        # Collect all completions
-        texts = [out.text for out in output.outputs]
-        results.append({**item, "outputs": texts})
+        results_shard.append({**item, "outputs": texts})
 
+        # Gather Python objects across processes using torch.distributed.all_gather_object
+    import torch.distributed as dist
+    if dist.is_available() and dist.is_initialized():
+        world_size = dist.get_world_size()
+        gathered = [None for _ in range(world_size)]
+        # gather lists of dicts from each process
+        dist.all_gather_object(gathered, results_shard)
+        if accelerator.is_main_process:
+            # flatten list of lists
+            results = [item for shard in gathered for item in shard]
+        else:
+            results = None
+    else:
+        # single process or non-distributed
+        results = results_shard
     return results
 
 
 def compute_metrics(dataset, num_samples):
     total = len(dataset)
-    # Initialize counters for each k
     pass_counts = {k: 0 for k in PASS_K_VALUES if k <= num_samples}
 
-    for item in dataset:
-        # Evaluate correctness for each sample
-        correctness_list = [evaluate_final_answer(out)[0] for out in item["outputs"]]
+    for item in tqdm(dataset, desc="Computing Metrics", unit="item"):
+        correctness_list = []
+        for out in item["outputs"]:
+            match = re.search(r"<answer>(.*?)</answer>", out, re.DOTALL)
+            if not match:
+                correctness_list.append(0.0)
+            else:
+                model_expr = match.group(1).strip()
+                
+                # Compare digits from both the model's expression and the reference expression.
+                ref_expr = item["expression"]
+                ref_digits_str = re.findall(r"\d+", ref_expr)
+                model_digits_str = re.findall(r"\d+", model_expr)
+
+                ref_digits = sorted(int(x) for x in ref_digits_str)
+                model_digits = sorted(int(x) for x in model_digits_str)
+
+                if ref_digits != model_digits:
+                    correctness_list.append(0.0)
+                else:
+                    try:
+                        if is_expr_equal_to_24(model_expr):
+                            correctness_list.append(1.0)
+                        else:
+                            correctness_list.append(0.0)
+                    except Exception:
+                        # Handle any exceptions that occur during expression evaluation
+                        correctness_list.append(0.0)
+                    
         item["correctness_per_sample"] = correctness_list
-        # For each requested k, mark pass if any of first k are correct
         for k in list(pass_counts):
             if any(correctness_list[:k]):
                 pass_counts[k] += 1
-            # record per-item pass@k
             item[f"pass@{k}"] = int(any(correctness_list[:k]))
 
-    # Build metrics summary
     metrics = {"number": total}
     for k, count in pass_counts.items():
         metrics[f"pass@{k}"] = float(count / total)
@@ -108,29 +158,36 @@ def compute_metrics(dataset, num_samples):
     return metrics, dataset
 
 
-def main(args):
+def main():
+    args = parse_args()
+    accelerator = Accelerator()
+
     os.makedirs(args.output_path, exist_ok=True)
-    dataset = load_data(args.input_path)
-    results = inference_vllm(
-        dataset,
+
+    data = load_data(args.input_path)
+    results = inference_transformers(
+        data,
         args.model_name_or_path,
         args.temperature,
         args.top_k,
         args.max_tokens,
-        args.tensor_parallel_size,
-        num_samples=args.num_samples
+        args.num_samples,
+        accelerator
     )
-    metrics, dataset = compute_metrics(results, args.num_samples)
 
-    # Write detailed results
-    with open(os.path.join(args.output_path, "inference.jsonl"), "w", encoding="utf-8") as f:
-        for item in results:
-            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+    # Only main process writes files and computes metrics
+    if accelerator.is_main_process:
+        metrics, annotated = compute_metrics(results, args.num_samples)
 
-    # Write aggregated metrics
-    with open(os.path.join(args.output_path, "metrics.json"), "w", encoding="utf-8") as f:
-        json.dump(metrics, f, indent=4, ensure_ascii=False)
+        # Write detailed results
+        with open(os.path.join(args.output_path, "inference.jsonl"), "w", encoding="utf-8") as f:
+            for item in annotated:
+                f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+        # Write aggregated metrics
+        with open(os.path.join(args.output_path, "metrics.json"), "w", encoding="utf-8") as f:
+            json.dump(metrics, f, indent=4, ensure_ascii=False)
+
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    main()

@@ -1,53 +1,47 @@
 #!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-node=8
+#SBATCH --job-name=eval-passk
+#SBATCH --output=logs/%x-%j.out
 
-NUM_NODES=$SLURM_NNODES
+# Number of GPUs on this single node
 GPUS_PER_NODE=8
-WORLD_SIZE=$(($NUM_NODES*$GPUS_PER_NODE))
-NODELIST=($(scontrol show hostnames $SLURM_JOB_NODELIST))
-MASTER_ADDR=${NODELIST[0]}  # First node for main process
-MASTER_PORT=27500
-TRAIN_NODES=("${NODELIST[@]}")
 
-echo "Nodes allocated:"
-for node in "${TRAIN_NODES[@]}"; do
-    echo "  - $node"
-done
+echo "Running on node: $(hostname)"
+echo "GPUs per node: $GPUS_PER_NODE"
 
-NO_PROXY_LIST=""
-for node in "${TRAIN_NODES[@]}"; do
-    if [ -z "$NO_PROXY_LIST" ]; then
-        NO_PROXY_LIST="$node"
-    else
-        NO_PROXY_LIST="$NO_PROXY_LIST,$node"
-    fi
-done
-
+# Build NO_PROXY list for local node
+NO_PROXY_LIST=$(hostname)
 export no_proxy="$NO_PROXY_LIST"
 export NO_PROXY="$NO_PROXY_LIST"
 
 PROJECT_HOME=/mnt/petrelfs/lisiheng/24Game
 
 MODEL_DIR=/mnt/lustrenew/mllm_safety-shared/lisiheng/checkpoints
-MODEL_NAME=Qwen2.5-0.5B-24_game_100000_direct_sft_0.2_0.2_0.01-32768-5e-5-128
+MODEL_NAME=Qwen2.5-Math-1.5B-24_game_100000_direct_sft_0.2_0.2_0.01-32768-5e-5-128
 MODEL_NAME_OR_PATH=$MODEL_DIR/$MODEL_NAME
-
-TENSOR_PARALLEL_SIZE=2
 
 TEMPERATURE=0.6
 TOP_K=32
-MAX_TOKENS=1024
+MAX_TOKENS=4096
+NUM_SAMPLES=16
 
 DATASET_DIR=./data
 DATASET_NAME=24_game_100000_direct
-DATASET_NAME_OR_PATH=$DATASET_DIR/$DATASET_NAME
+INPUT_PATH=$DATASET_DIR/$DATASET_NAME
 
 OUTPUT_DIR=$PROJECT_HOME/results/$MODEL_NAME-$MAX_TOKENS
+mkdir -p $OUTPUT_DIR
 
-python evaluate.py \
+# Launch on single node, multi-GPU via accelerate
+accelerate launch \
+    --num_processes $GPUS_PER_NODE \
+    evaluate.py \
     --model_name_or_path $MODEL_NAME_OR_PATH \
     --temperature $TEMPERATURE \
     --top_k $TOP_K \
     --max_tokens $MAX_TOKENS \
-    --tensor_parallel_size $TENSOR_PARALLEL_SIZE \
-    --input_path $DATASET_NAME_OR_PATH \
-    --output_path $OUTPUT_DIR
+    --input_path $INPUT_PATH \
+    --output_path $OUTPUT_DIR \
+    --num_samples $NUM_SAMPLES

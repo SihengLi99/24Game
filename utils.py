@@ -13,6 +13,7 @@ PAD_TOKEN_MAP = {
     "Qwen2.5-7B": "<|video_pad|>",
     "Qwen2.5-14B": "<|video_pad|>",
     "Qwen2.5-32B": "<|video_pad|>",
+    "Qwen2.5-Math-1.5B": "<|video_pad|>",
 }
 
 def get_tokenizer(
