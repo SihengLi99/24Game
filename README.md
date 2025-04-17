@@ -2,7 +2,7 @@
 
 > **Author:** Siheng Li  
 > **Date:** 2025‑04‑17  
-> A simple *O(1)* 24‑point solver, trained with **SFT**, **SFT + RL**, and **pure RL**, reaching **60 %** accuracy.
+> A lightweight 24-point solver with O(1)-style inference, trained using SFT, SFT + RL, and pure RL, achieving up to 60 % accuracy.
 
 ---
 
