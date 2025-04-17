@@ -476,9 +476,11 @@ bash evaluate.sh
 | Qwen2.5‑1.5B + SFT + RL  | **0.60** | **0.84** | **0.91** | **0.92** | **0.94** |
 | Qwen2.5‑1.5B + RL only | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
 
-*All inference results are available for local inspection.*
-*For Qwen2.5‑1.5B with SFT and RL, we observed a clear upward trend in the reward curve during RL training. However, due to limited computational resources, we leave a more comprehensive exploration of this direction to future work.*
-*For the RL-only approach, I experimented with models up to Qwen2.5-14B; however, it still failed to discover effective strategies, as the reward exhibited no significant improvement over an extended period.*
+> **Notes:**
+> 
+> - *All inference results are available for local inspection.*
+> - *For **Qwen2.5‑1.5B + SFT + RL**, we observed a clear upward trend in the reward curve during RL training. However, due to limited computational resources, a more extensive exploration is left to future work.*
+> - *For the **RL-only** approach, we experimented with models up to **Qwen2.5‑14B**. Nonetheless, the reward signal showed no significant improvement over time, indicating limited learning progress.*
 
 ### 4.2 Impact of Test‑Time Compute ⏱️
 
