@@ -7,7 +7,7 @@ import datasets
 import transformers
 from vllm import LLM, SamplingParams
 
-from build_response import evaluate_final_answer
+from build_sft_dataset import evaluate_final_answer
 
 # Compute pass@k for multiple k values in one run (e.g., 1,2,4,8,16)
 PASS_K_VALUES = [1, 2, 4, 8, 16]

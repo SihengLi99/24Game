@@ -28,14 +28,14 @@ export NO_PROXY="$NO_PROXY_LIST"
 PROJECT_HOME=/mnt/petrelfs/lisiheng/24Game
 
 MODEL_DIR=/mnt/lustrenew/mllm_safety-shared/lisiheng/checkpoints
-MODEL_NAME=Qwen2.5-0.5B-24_game_100000_direct_sft_0.01-32768-5e-5-256
+MODEL_NAME=Qwen2.5-0.5B-24_game_100000_direct_sft_0.2_0.2_0.01-32768-5e-5-128
 MODEL_NAME_OR_PATH=$MODEL_DIR/$MODEL_NAME
 
 TENSOR_PARALLEL_SIZE=2
 
 TEMPERATURE=0.6
 TOP_K=32
-MAX_TOKENS=1000
+MAX_TOKENS=1024
 
 DATASET_DIR=./data
 DATASET_NAME=24_game_100000_direct
